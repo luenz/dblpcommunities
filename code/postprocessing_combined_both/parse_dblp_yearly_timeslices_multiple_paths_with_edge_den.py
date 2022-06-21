@@ -250,22 +250,21 @@ def main():
                     comparison_graph.add_edge((y, id_to_community[y].index(c)), i * 2 + 1, weight = 1)
 
                     for c2 in communities[previous_year]:
-
                         base_weight = compare_communities(community_nodes[y][id_to_community[y].index(c)], community_nodes[previous_year][id_to_community[previous_year].index(c2)])
                         if base_weight > epsilon and target_fun == 0:
-                            base_weight = 1/base_weight * (community_calcs[id_to_community[y].index(c)][0] + community_calcs[id_to_community[previous_year].index(c2)][0])/2 * (community_calcs[id_to_community[y].index(c)][1] + community_calcs[id_to_community[previous_year].index(c2)][1])/2
+                            base_weight = 1/(base_weight * ((community_calcs[id_to_community[y].index(c)][0] + community_calcs[id_to_community[previous_year].index(c2)][0])/2) * ((community_calcs[id_to_community[y].index(c)][1] + community_calcs[id_to_community[previous_year].index(c2)][1])/2))
                         elif base_weight > epsilon and target_fun == 1:
-                            base_weight = (1-base_weight) * (community_calcs[id_to_community[y].index(c)][0] + community_calcs[id_to_community[previous_year].index(c2)][0])/2 * (community_calcs[id_to_community[y].index(c)][1] + community_calcs[id_to_community[previous_year].index(c2)][1])/2
+                            base_weight = 1-(base_weight * ((community_calcs[id_to_community[y].index(c)][0] + community_calcs[id_to_community[previous_year].index(c2)][0])/2) * ((community_calcs[id_to_community[y].index(c)][1] + community_calcs[id_to_community[previous_year].index(c2)][1])/2))
                         elif base_weight > epsilon and target_fun == 2:
                             if base_weight < 0.5:
                                 base_weight = 100000
                             else:
-                                base_weight = 1/base_weight * (community_calcs[id_to_community[y].index(c)][0] + community_calcs[id_to_community[previous_year].index(c2)][0])/2 * (community_calcs[id_to_community[y].index(c)][1] + community_calcs[id_to_community[previous_year].index(c2)][1])/2
+                                base_weight = 1/(base_weight * ((community_calcs[id_to_community[y].index(c)][0] + community_calcs[id_to_community[previous_year].index(c2)][0])/2) * ((community_calcs[id_to_community[y].index(c)][1] + community_calcs[id_to_community[previous_year].index(c2)][1])/2))
                         elif base_weight > epsilon and target_fun == 3:
                             if base_weight < 0.5:
                                 base_weight = 100000
                             else:
-                                base_weight = (1-base_weight) * (community_calcs[id_to_community[y].index(c)][0] + community_calcs[id_to_community[previous_year].index(c2)][0])/2 * (community_calcs[id_to_community[y].index(c)][1] + community_calcs[id_to_community[previous_year].index(c2)][1])/2
+                                base_weight = 1-(base_weight * ((community_calcs[id_to_community[y].index(c)][0] + community_calcs[id_to_community[previous_year].index(c2)][0])/2) * ((community_calcs[id_to_community[y].index(c)][1] + community_calcs[id_to_community[previous_year].index(c2)][1])/2))
                         elif base_weight > epsilon and target_fun == 4:
                             if base_weight < 0.5:
                                 base_weight = 100000

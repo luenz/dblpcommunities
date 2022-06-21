@@ -169,9 +169,9 @@ def main():
         if len(collab_graphs[y]) > 0:
         # put different communities in
             communities[y] = []
+            comm_set = set()
             if community_alg == 0 or community_alg == 10:
                 average_runtime = 0
-                comm_set = set()
                 for i in range(0, 10):
                     start = datetime.now()
                     commies = algorithms.louvain(collab_graphs[y].copy(), weight = 'weight', resolution=0.25*(i + 1), randomize=i).communities
@@ -221,7 +221,7 @@ def main():
                 #comm_test_file = open("../resources/comm_test_pycombo.csv", 'a')
                 for i in range(0,10):
                     start = datetime.now()
-                    commies = algorithms.pycombo(collab_graphs[y].copy(), modularity_resolution=0.25*(i + 1), random_seed=i).communities
+                    commies = algorithms.edmot(collab_graphs[y].copy(), i+1, 10*(i+1)).communities
                     end = datetime.now()
                     average_runtime += (end - start).total_seconds()
                     for community in commies:

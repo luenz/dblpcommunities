@@ -246,19 +246,19 @@ def main():
                     for c2 in communities[previous_year]:
                         base_weight = compare_communities(community_nodes[y][id_to_community[y].index(c)], community_nodes[previous_year][id_to_community[previous_year].index(c2)])
                         if base_weight > epsilon and target_fun == 0:
-                            base_weight = 1/base_weight * (community_calcs[id_to_community[y].index(c)][0] + community_calcs[id_to_community[previous_year].index(c2)][0])/2 * (community_calcs[id_to_community[y].index(c)][1] + community_calcs[id_to_community[previous_year].index(c2)][1])/2
+                            base_weight = 1/(base_weight * ((community_calcs[id_to_community[y].index(c)][0] + community_calcs[id_to_community[previous_year].index(c2)][0])/2) * ((community_calcs[id_to_community[y].index(c)][1] + community_calcs[id_to_community[previous_year].index(c2)][1])/2))
                         elif base_weight > epsilon and target_fun == 1:
-                            base_weight = (1-base_weight) * (community_calcs[id_to_community[y].index(c)][0] + community_calcs[id_to_community[previous_year].index(c2)][0])/2 * (community_calcs[id_to_community[y].index(c)][1] + community_calcs[id_to_community[previous_year].index(c2)][1])/2
+                            base_weight = 1-(base_weight * ((community_calcs[id_to_community[y].index(c)][0] + community_calcs[id_to_community[previous_year].index(c2)][0])/2) * ((community_calcs[id_to_community[y].index(c)][1] + community_calcs[id_to_community[previous_year].index(c2)][1])/2))
                         elif base_weight > epsilon and target_fun == 2:
                             if base_weight < 0.5:
                                 base_weight = 100000
                             else:
-                                base_weight = 1/base_weight * (community_calcs[id_to_community[y].index(c)][0] + community_calcs[id_to_community[previous_year].index(c2)][0])/2 * (community_calcs[id_to_community[y].index(c)][1] + community_calcs[id_to_community[previous_year].index(c2)][1])/2
+                                base_weight = 1/(base_weight * ((community_calcs[id_to_community[y].index(c)][0] + community_calcs[id_to_community[previous_year].index(c2)][0])/2) * ((community_calcs[id_to_community[y].index(c)][1] + community_calcs[id_to_community[previous_year].index(c2)][1])/2))
                         elif base_weight > epsilon and target_fun == 3:
                             if base_weight < 0.5:
                                 base_weight = 100000
                             else:
-                                base_weight = (1-base_weight) * (community_calcs[id_to_community[y].index(c)][0] + community_calcs[id_to_community[previous_year].index(c2)][0])/2 * (community_calcs[id_to_community[y].index(c)][1] + community_calcs[id_to_community[previous_year].index(c2)][1])/2
+                                base_weight = 1-(base_weight * ((community_calcs[id_to_community[y].index(c)][0] + community_calcs[id_to_community[previous_year].index(c2)][0])/2) * ((community_calcs[id_to_community[y].index(c)][1] + community_calcs[id_to_community[previous_year].index(c2)][1])/2))
                         elif base_weight > epsilon and target_fun == 4:
                             if base_weight < 0.5:
                                 base_weight = 100000
@@ -271,7 +271,7 @@ def main():
             i = i + 1
             if i == len(communities):
                 for c in communities[y]:
-                    comparison_graph.add_edge((y, id_to_community[y].index(c)), "end", weight = (end_year + 1 - timeslice_thickness - y)/2)
+                    comparison_graph.add_edge((y, id_to_community[y].index(c)), "end", weight = (end_year + 1 - timeslice_thickness - y)*cutoff)
 
         num_communities = 0
         for y in communities:
