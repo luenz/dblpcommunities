@@ -164,9 +164,7 @@ def main():
         elem.clear()
     end = datetime.now()
     collab_graphs = {key: collab_graphs[key] for key in sorted(collab_graphs)}
-    for y in collab_graphs:
-        for u, v, d in collab_graphs[y].edges(data=True):
-            d['weight'] = 1 + d['weight']*0.1
+
 
 
 
