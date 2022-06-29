@@ -3,13 +3,15 @@ import networkx as nx
 import itertools as IT
 import os
 from cdlib import algorithms, evaluation, NodeClustering
-from datetime import datetime
+from datetime import datetime, timedelta
 import numpy as np
 from io import BytesIO
 import argparse
 import sys
 from networkx.readwrite import json_graph
+from math import log
 import json
+from operator import itemgetter
 
 from pyparsing import col
 
@@ -47,9 +49,11 @@ def main():
     dblp_path = args.xml_path
     if not os.path.exists(dblp_path):
         print("Error finding dblp.xml, did you enter the right path?")
+        sys.exit()
     output_path = args.output_path
     if not os.path.exists(output_path):
         print("Error finding output path, did you enter the right path?")
+        sys.exit()
     file = open(dblp_path, 'rb')
     xml_file = BytesIO(file.read())
     author_lst = []
@@ -147,71 +151,84 @@ def main():
                     collab_graphs[year] = nx.Graph()
                     authors_yearly[year] = []
                 if len(author_lst_local) > 1:
-                    author_lst.extend(author_lst_local)
                     for a in author_lst_local:
                         #choose proper graph by year
-                        if a not in authors_yearly[year]:
-                            authors_yearly[year].append(a)
-                        collab_graphs[year].add_node(authors_yearly[year].index(a))
+                        # save list of all authors for faster comparisons (index vs string)
+                        if a not in author_lst:
+                            author_lst.append(a)
+                        a_index = author_lst.index(a)
+                        if a_index not in authors_yearly[year]:
+                            authors_yearly[year].append(a_index)
+                        collab_graphs[year].add_node(authors_yearly[year].index(a_index))
                     for combo in IT.combinations(author_lst_local, 2):
                         #same graph as above
-                        if collab_graphs[year].has_edge(authors_yearly[year].index(combo[0]), authors_yearly[year].index(combo[1])):
-                            collab_graphs[year][authors_yearly[year].index(combo[0])][authors_yearly[year].index(combo[1])]['weight'] = collab_graphs[year][authors_yearly[year].index(combo[0])][authors_yearly[year].index(combo[1])]['weight'] + 1
+                        if collab_graphs[year].has_edge(authors_yearly[year].index(author_lst.index(combo[0])), authors_yearly[year].index(author_lst.index(combo[1]))):
+                            collab_graphs[year][authors_yearly[year].index(author_lst.index(combo[0]))][authors_yearly[year].index(author_lst.index(combo[1]))]['weight'] = collab_graphs[year][authors_yearly[year].index(author_lst.index(combo[0]))][authors_yearly[year].index(author_lst.index(combo[1]))]['weight'] + 1
                         else:
-                            collab_graphs[year].add_edge(authors_yearly[year].index(combo[0]), authors_yearly[year].index(combo[1]), weight = 1)
+                            collab_graphs[year].add_edge(authors_yearly[year].index(author_lst.index(combo[0])), authors_yearly[year].index(author_lst.index(combo[1])), weight = 1)
             author_lst_local = []
             flag = 0
         elem.clear()
     end = datetime.now()
     collab_graphs = {key: collab_graphs[key] for key in sorted(collab_graphs)}
 
-
-
-    communities = {}
+    print("Parsing xml and building collab graphs: ", end-start)
+    start = datetime.now()
+    communities = []
     for y in range(start_year, end_year + 1 - timeslice_thickness + 1):
         # else years with no collaborative papers mess up the comparison graph
         if len(collab_graphs[y]) > 0:
         # put different communities in
-            communities[y] = []
+            communities.append([])
             if community_alg == 0 or community_alg == 10:
                 for i in range(0, 10):
-                    communities[y].extend(algorithms.louvain(collab_graphs[y].copy(), weight = 'weight', resolution=0.25*(i + 1), randomize=i).communities)
+                    communities[y - start_year].extend(algorithms.louvain(collab_graphs[y].copy(), weight = 'weight', resolution=0.25*(i + 1), randomize=i).communities)
             if community_alg == 1 or community_alg == 10:
                 for i in range(0,10):
-                    communities[y].extend(algorithms.chinesewhispers(collab_graphs[y].copy(), iterations=2*(i + 1), seed=i).communities)
+                    communities[y - start_year].extend(algorithms.chinesewhispers(collab_graphs[y].copy(), iterations=2*(i + 1), seed=i).communities)
             if community_alg == 2 or community_alg == 10:
                 for i in range(0,10):
-                    communities[y].extend(algorithms.scd(collab_graphs[y].copy(), iterations=3*(i+1), seed=i).communities)
+                    communities[y - start_year].extend(algorithms.scd(collab_graphs[y].copy(), iterations=3*(i+1), seed=i).communities)
             if community_alg == 3 or community_alg == 10:
                 for i in range(0,10):
-                    communities[y].extend(algorithms.pycombo(collab_graphs[y].copy(), modularity_resolution=0.25*(i + 1), random_seed=i).communities)            
+                    communities[y - start_year].extend(algorithms.pycombo(collab_graphs[y].copy(), modularity_resolution=0.25*(i + 1), random_seed=i).communities)            
             
-            for c in communities[y][:]:
-                if len(c) < 3:
-                    communities[y].remove(c)
-
+            no_small_communities = []
+            for c in communities[y - start_year]:
+                if not len(c) < 3:
+                    no_small_communities.append(c)
+            communities[y - start_year] = no_small_communities
+            communities[y - start_year].sort()
+            communities[y - start_year] = list(communities[y - start_year] for communities[y - start_year],_ in IT.groupby(communities[y - start_year]))
+    end = datetime.now()
+    print(communities[0])
+    print("Finding communities: ", end-start)
     # get reference for individual communities to store in comparison graph
     #TODO: wenn community liste von listen eine ebene tiefer knoten extrahieren
-    id_to_community = {} # vllt nach Jahren aufsplitten damit funktioniert
-    community_nodes = {}
+    id_to_community = []  # vllt nach Jahren aufsplitten damit funktioniert
+    community_nodes = []
+    #community_to_id = []
     flag = True
     for y in range(start_year, end_year + 1 - timeslice_thickness + 1):
-        id_to_community[y] = []
-        community_nodes[y] = []
-        for c in communities[y]:
+        id_to_community.append([])
+        community_nodes.append([])
+        for c in communities[y - start_year]:
             nodes = set()
             for node in c:
                 nodes.add(authors_yearly[y][node])
-            id_to_community[y].append(c)
-            community_nodes[y].append(nodes)
+            id_to_community[y - start_year].append(c)
+            community_nodes[y - start_year].append(nodes)
+        #community_to_id.append(dict(zip(id_to_community[y - start_year], range(0, len(id_to_community[y-start_year])))))
 
-    community_calcs = {} # add list of community, embeddedness, density
+    
+    community_calcs = [] # add list of community, embeddedness, density
     for y in range(start_year, end_year + 1 - timeslice_thickness + 1):
-        for c in communities[y]:
-            community_calcs[id_to_community[y].index(c)] = []
-            clustering = NodeClustering([c], graph=collab_graphs[y], method_name="egal")
-            community_calcs[id_to_community[y].index(c)].append(evaluation.avg_embeddedness(collab_graphs[y], clustering, summary=False)[0])
-            community_calcs[id_to_community[y].index(c)].append(evaluation.internal_edge_density(collab_graphs[y], clustering, summary=False)[0])
+        community_calcs.append([])
+        for c_index in range(len(communities[y - start_year])):
+            community_calcs[y - start_year].append([])
+            clustering = NodeClustering([id_to_community[y - start_year][c_index]], graph=collab_graphs[y], method_name="egal")
+            community_calcs[y - start_year][c_index].append(evaluation.avg_embeddedness(collab_graphs[y], clustering, summary=False)[0])
+            community_calcs[y - start_year][c_index].append(evaluation.internal_edge_density(collab_graphs[y], clustering, summary=False)[0])
 
     while args.target_function >= 0:
         number_of_solutions = args.number_of_sol_arg
@@ -222,43 +239,95 @@ def main():
         per_year_buffer = []
         comm_counter = 0
         epsilon = 0.001
+        global compare_total
+        compare_total = timedelta()
+        calculate_total = timedelta()
+        start = datetime.now()
         # fill comparison graph
         for y in range(start_year, end_year + 1 - timeslice_thickness + 1):
             if i == 0:
                 comparison_graph.add_node("start")
                 comparison_graph.add_node("end")
-                for c in communities[y]:
-                    comparison_graph.add_node((y, id_to_community[y].index(c)))
-                    comparison_graph.add_edge("start",  (y, id_to_community[y].index(c)), weight = (y - start_year + 1)*cutoff) #irgendwas mit y drin wahrscheinlich?
+                # for c in communities[y - start_year]:
+                #     comparison_graph.add_node((y, community_to_id[y - start_year][c]))
+                #     comparison_graph.add_edge("start",  (y, community_to_id[y - start_year][c]), weight = (y - start_year)*cutoff) #irgendwas mit y drin wahrscheinlich?
+                #     comm_counter = comm_counter + 1
+
+                for c_index in range(len(communities[y - start_year])):
+                    comparison_graph.add_node((y, c_index))
+                    comparison_graph.add_edge("start",  (y, c_index), weight = (y - start_year)*cutoff) #irgendwas mit y drin wahrscheinlich?
+                    comparison_graph.add_edge((y, c_index), "end", weight = (end_year + 1 - timeslice_thickness - y)*cutoff)
                     comm_counter = comm_counter + 1
             else:
-                for c in communities[y]:
-                    if (y, id_to_community[y].index(c)) in comparison_graph:
+                # for c in communities[y - start_year]:
+                #     if (y, community_to_id[y - start_year][c]) in comparison_graph:
+                #         comm_counter = comm_counter + 1
+                #         continue
+                #     comparison_graph.add_node((y, community_to_id[y - start_year][c]))
+                #     comparison_graph.add_edge("start",  (y, community_to_id[y - start_year][c]), weight = (y - start_year)*cutoff) #irgendwas mit y drin wahrscheinlich?
+                #     # if one huge difference between communities, they likely aren't the same one -> maybe flat values
+                #     clustering = NodeClustering([c], graph=collab_graphs[y], method_name="egal")
+                #     calculate_start = datetime.now()
+                #     avg_embed = evaluation.avg_embeddedness(collab_graphs[y], clustering, summary=False)
+                #     edge_den = evaluation.internal_edge_density(collab_graphs[y], clustering, summary=False)
+                #     calculate_end = datetime.now()
+                #     calculate_total += calculate_end - calculate_start
+                #     comm_counter = comm_counter + 1
+                #     for c2 in communities[previous_year]:
+                #         base_weight = compare_communities(community_nodes[y - start_year][community_to_id[y - start_year][c]], community_nodes[previous_year - start_year][id_to_community[previous_year - start_year].index(c2)])
+                #         if base_weight > epsilon and target_fun == 0:
+                #             base_weight = 1/(base_weight * ((community_calcs[community_to_id[y - start_year][c]][0] + community_calcs[community_to_id[previous_year - start_year][c2]][0])/2) * ((community_calcs[community_to_id[y - start_year][c]][1] + community_calcs[community_to_id[previous_year - start_year][c2]][1])/2))
+                #         elif base_weight > epsilon and target_fun == 1:
+                #             base_weight = 1-(base_weight * ((community_calcs[community_to_id[y - start_year][c]][0] + community_calcs[community_to_id[previous_year - start_year][c2]][0])/2) * ((community_calcs[community_to_id[y - start_year][c]][1] + community_calcs[community_to_id[previous_year - start_year][c2]][1])/2))
+                #         elif base_weight > epsilon and target_fun == 2:
+                #             if base_weight < 0.5:
+                #                 base_weight = 100000
+                #             else:
+                #                 base_weight = 1/(base_weight * ((community_calcs[community_to_id[y - start_year][c]][0] + community_calcs[community_to_id[previous_year - start_year][c2]][0])/2) * ((community_calcs[community_to_id[y - start_year][c]][1] + community_calcs[community_to_id[previous_year - start_year][c2]][1])/2))
+                #         elif base_weight > epsilon and target_fun == 3:
+                #             if base_weight < 0.5:
+                #                 base_weight = 100000
+                #             else:
+                #                 base_weight = 1-(base_weight * ((community_calcs[community_to_id[y - start_year][c]][0] + community_calcs[community_to_id[previous_year - start_year][c2]][0])/2) * ((community_calcs[community_to_id[y - start_year][c]][1] + community_calcs[community_to_id[previous_year - start_year][c2]][1])/2))
+                #         elif base_weight > epsilon and target_fun == 4:
+                #             if base_weight < 0.5:
+                #                 base_weight = 100000
+                #             else:
+                #                 base_weight = (1-base_weight)
+                #         else:
+                #             base_weight = 100000
+                #         comparison_graph.add_edge((previous_year, community_to_id[previous_year - start_year][c2]), (y, community_to_id[y - start_year][c]), weight = base_weight)
+                for c_index in range(len(communities[y - start_year])):
+                    if (y, c_index) in comparison_graph:
                         comm_counter = comm_counter + 1
                         continue
-                    comparison_graph.add_node((y, id_to_community[y].index(c)))
-                    comparison_graph.add_edge("start",  (y, id_to_community[y].index(c)), weight = (y - start_year + 1)*cutoff) #irgendwas mit y drin wahrscheinlich?
+                    comparison_graph.add_node((y, c_index))
+                    comparison_graph.add_edge("start",  (y, c_index), weight = (y - start_year)*cutoff) #irgendwas mit y drin wahrscheinlich?
+                    comparison_graph.add_edge((y, c_index), "end", weight = (end_year + 1 - timeslice_thickness - y)*cutoff)
                     # if one huge difference between communities, they likely aren't the same one -> maybe flat values
-                    clustering = NodeClustering([c], graph=collab_graphs[y], method_name="egal")
+                    clustering = NodeClustering([id_to_community[y - start_year][c_index]], graph=collab_graphs[y], method_name="egal")
+                    calculate_start = datetime.now()
                     avg_embed = evaluation.avg_embeddedness(collab_graphs[y], clustering, summary=False)
                     edge_den = evaluation.internal_edge_density(collab_graphs[y], clustering, summary=False)
+                    calculate_end = datetime.now()
+                    calculate_total += calculate_end - calculate_start
                     comm_counter = comm_counter + 1
-                    for c2 in communities[previous_year]:
-                        base_weight = compare_communities(community_nodes[y][id_to_community[y].index(c)], community_nodes[previous_year][id_to_community[previous_year].index(c2)])
+                    for c2_index in range(len(communities[previous_year - start_year])):
+                        base_weight = compare_communities([*itemgetter(*id_to_community[y - start_year][c_index])(authors_yearly[y])], [*itemgetter(*id_to_community[previous_year - start_year][c2_index])(authors_yearly[previous_year])])
                         if base_weight > epsilon and target_fun == 0:
-                            base_weight = 1/(base_weight * ((community_calcs[id_to_community[y].index(c)][0] + community_calcs[id_to_community[previous_year].index(c2)][0])/2) * ((community_calcs[id_to_community[y].index(c)][1] + community_calcs[id_to_community[previous_year].index(c2)][1])/2))
+                            base_weight = 1/((log(len(id_to_community[y - start_year][c_index])) + log((len(id_to_community[previous_year - start_year][c2_index]))))/2*20*(base_weight * ((community_calcs[y - start_year][c_index][0] + community_calcs[previous_year - start_year][c2_index][0])/2) * ((community_calcs[y - start_year][c_index][1] + community_calcs[previous_year - start_year][c2_index][1])/2)))
                         elif base_weight > epsilon and target_fun == 1:
-                            base_weight = 1-(base_weight * ((community_calcs[id_to_community[y].index(c)][0] + community_calcs[id_to_community[previous_year].index(c2)][0])/2) * ((community_calcs[id_to_community[y].index(c)][1] + community_calcs[id_to_community[previous_year].index(c2)][1])/2))
+                            base_weight = 1-(base_weight *((community_calcs[y - start_year][c_index][0] + community_calcs[previous_year - start_year][c2_index][0])/2) * ((community_calcs[y - start_year][c_index][1] + community_calcs[previous_year - start_year][c2_index][1])/2))
                         elif base_weight > epsilon and target_fun == 2:
                             if base_weight < 0.5:
                                 base_weight = 100000
                             else:
-                                base_weight = 1/(base_weight * ((community_calcs[id_to_community[y].index(c)][0] + community_calcs[id_to_community[previous_year].index(c2)][0])/2) * ((community_calcs[id_to_community[y].index(c)][1] + community_calcs[id_to_community[previous_year].index(c2)][1])/2))
+                                base_weight = 1/((log(len(id_to_community[y - start_year][c_index])) + log((len(id_to_community[previous_year - start_year][c2_index]))))/2*20*(base_weight * ((community_calcs[y - start_year][c_index][0] + community_calcs[previous_year - start_year][c2_index][0])/2) * ((community_calcs[y - start_year][c_index][1] + community_calcs[previous_year - start_year][c2_index][1])/2)))
                         elif base_weight > epsilon and target_fun == 3:
                             if base_weight < 0.5:
                                 base_weight = 100000
                             else:
-                                base_weight = 1-(base_weight * ((community_calcs[id_to_community[y].index(c)][0] + community_calcs[id_to_community[previous_year].index(c2)][0])/2) * ((community_calcs[id_to_community[y].index(c)][1] + community_calcs[id_to_community[previous_year].index(c2)][1])/2))
+                                base_weight = 1-(base_weight * ((community_calcs[y - start_year][c_index][0] + community_calcs[previous_year - start_year][c2_index][0])/2) * ((community_calcs[y - start_year][c_index][1] + community_calcs[previous_year - start_year][c2_index][1])/2))
                         elif base_weight > epsilon and target_fun == 4:
                             if base_weight < 0.5:
                                 base_weight = 100000
@@ -266,15 +335,17 @@ def main():
                                 base_weight = (1-base_weight)
                         else:
                             base_weight = 100000
-                        comparison_graph.add_edge((previous_year, id_to_community[previous_year].index(c2)), (y, id_to_community[y].index(c)), weight = base_weight)
+                        comparison_graph.add_edge((previous_year, c2_index), (y, c_index), weight = base_weight)
             previous_year = y
             i = i + 1
-            if i == len(communities):
-                for c in communities[y]:
-                    comparison_graph.add_edge((y, id_to_community[y].index(c)), "end", weight = (end_year + 1 - timeslice_thickness - y)*cutoff)
+        end = datetime.now()
 
+        print("Building comparison graph for target function ", target_fun, ": ", end-start)
+        print(comparison_graph)
+        print("Time spent comparing communities: ", compare_total)
+        print("Time spent calculating useless stuff: ", calculate_total)
         num_communities = 0
-        for y in communities:
+        for y in range(len(communities)):
             num_communities = num_communities + len(communities[y])
         print("Total number of communities: ", num_communities, file = output)
 
@@ -287,26 +358,30 @@ def main():
             average_embed = 0
             average_shared = 0
             counter = 0
+            start = datetime.now()
             path = nx.astar_path(comparison_graph, "start", "end")
+            end = datetime.now()
+            print(target_fun, args.number_of_sol_arg-number_of_solutions, " Finding shortest path: ", end-start)
+            start = datetime.now()
             for idx, n in enumerate(path):
                 print(n, file = output)
                 conferences_in_comm = set()
                 if counter > 0:
-                    print(community_nodes[n[0]][n[1]], file = output)
-                    calc_clustering = NodeClustering([id_to_community[n[0]][n[1]]], graph=collab_graphs[n[0]], method_name="egal")
+                    print([*itemgetter(*itemgetter(*id_to_community[n[0] - start_year][n[1]])(authors_yearly[n[0]]))(author_lst)], file = output)
+                    calc_clustering = NodeClustering([id_to_community[n[0] - start_year][n[1]]], graph=collab_graphs[n[0]], method_name="egal")
                     average_size += len(calc_clustering.communities[0])
                     edge_den_old = average_edge_den
                     average_edge_den += evaluation.internal_edge_density(calc_clustering.graph, calc_clustering, summary=False)[0]
                     average_embed += evaluation.avg_embeddedness(calc_clustering.graph, calc_clustering, summary=False)[0]
+                    for author in id_to_community[n[0] - start_year][n[1]]:
+                            conferences_in_comm = conferences_in_comm.union(author_conferences[author_lst[authors_yearly[n[0]][author]]])
+                    print(conferences_in_comm, file = output)
                     if counter >= len(path) - 2:
                         break
                     else:
                         next_item = path[idx + 1]
-                        average_shared += compare_communities(community_nodes[n[0]][n[1]], community_nodes[next_item[0]][next_item[1]])
-                        for author in community_nodes[n[0]][n[1]]:
-                            conferences_in_comm = conferences_in_comm.union(author_conferences[author])
-                        print(conferences_in_comm, file = output)
-                        print(comparison_graph.get_edge_data(n, path[path.index(n) + 1]), file = output)
+                        average_shared += compare_communities([*itemgetter(*id_to_community[n[0] - start_year][n[1]])(authors_yearly[n[0]])], [*itemgetter(*id_to_community[next_item[0] - start_year][next_item[1]])(authors_yearly[next_item[0]])])
+                        print(comparison_graph.get_edge_data(n, path[idx + 1]), file = output)
                 counter = counter + 1
                 if counter == len(path) - 1:
                     break
@@ -324,46 +399,50 @@ def main():
             counter = 0
             for idx, n in enumerate(path):
                 if counter > 0:
-                    comm = id_to_community[n[0]][n[1]]
+                    comm = id_to_community[n[0] - start_year][n[1]]
                     add_nodes = set(comm)
                     add_size = len(add_nodes)
                     core_community = set(comm) # add nodes from community chain to "core community"
                     comms_only_subgraph = nx.subgraph(collab_graphs[n[0]], core_community)
                     for node in comms_only_subgraph.nodes():
-                        output_graph_updated.add_node(authors_yearly[n[0]][node])
+                        output_graph_updated.add_node(author_lst[authors_yearly[n[0]][node]])
                     for edge in comms_only_subgraph.edges():
-                        if output_graph_updated.has_edge(authors_yearly[n[0]][edge[0]], authors_yearly[n[0]][edge[1]]):
-                            output_graph_updated[authors_yearly[n[0]][edge[0]]][authors_yearly[n[0]][edge[1]]]['weight'] = output_graph_updated[authors_yearly[n[0]][edge[0]]][authors_yearly[n[0]][edge[1]]]['weight'] + comms_only_subgraph[edge[0]][edge[1]]['weight'] # /timeslice_thickness
+                        if output_graph_updated.has_edge(author_lst[authors_yearly[n[0]][edge[0]]], author_lst[authors_yearly[n[0]][edge[1]]]):
+                            output_graph_updated[author_lst[authors_yearly[n[0]][edge[0]]]][author_lst[authors_yearly[n[0]][edge[1]]]]['weight'] = output_graph_updated[author_lst[authors_yearly[n[0]][edge[0]]]][author_lst[authors_yearly[n[0]][edge[1]]]]['weight'] + comms_only_subgraph[edge[0]][edge[1]]['weight'] # /timeslice_thickness
                         else:
-                            output_graph_updated.add_edge(authors_yearly[n[0]][edge[0]], authors_yearly[n[0]][edge[1]], weight = comms_only_subgraph[edge[0]][edge[1]]['weight']) # /timeslice_thickness)
+                            output_graph_updated.add_edge(author_lst[authors_yearly[n[0]][edge[0]]], author_lst[authors_yearly[n[0]][edge[1]]], weight = comms_only_subgraph[edge[0]][edge[1]]['weight']) # /timeslice_thickness)
                     for node in comm:
-                        color_map.append(authors_yearly[n[0]][node])
+                        color_map.append(author_lst[authors_yearly[n[0]][node]])
                         add_nodes = add_nodes.union(set(collab_graphs[n[0]].neighbors(node)))
                     subgraph = nx.subgraph(collab_graphs[n[0]], add_nodes)
                     for node in subgraph.nodes():
-                        output_graph.add_node(authors_yearly[n[0]][node])
+                        output_graph.add_node(author_lst[authors_yearly[n[0]][node]])
                     for edge in subgraph.edges():
-                        if output_graph.has_edge(authors_yearly[n[0]][edge[0]], authors_yearly[n[0]][edge[1]]):
-                            output_graph[authors_yearly[n[0]][edge[0]]][authors_yearly[n[0]][edge[1]]]['weight'] = output_graph[authors_yearly[n[0]][edge[0]]][authors_yearly[n[0]][edge[1]]]['weight'] + subgraph[edge[0]][edge[1]]['weight'] # /timeslice_thickness
+                        if output_graph.has_edge(author_lst[authors_yearly[n[0]][edge[0]]], author_lst[authors_yearly[n[0]][edge[1]]]):
+                            output_graph[author_lst[authors_yearly[n[0]][edge[0]]]][author_lst[authors_yearly[n[0]][edge[1]]]]['weight'] = output_graph[author_lst[authors_yearly[n[0]][edge[0]]]][author_lst[authors_yearly[n[0]][edge[1]]]]['weight'] + subgraph[edge[0]][edge[1]]['weight'] # /timeslice_thickness
                         else:
-                            output_graph.add_edge(authors_yearly[n[0]][edge[0]], authors_yearly[n[0]][edge[1]], weight = subgraph[edge[0]][edge[1]]['weight']) # /timeslice_thickness)
+                            output_graph.add_edge(author_lst[authors_yearly[n[0]][edge[0]]], author_lst[authors_yearly[n[0]][edge[1]]], weight = subgraph[edge[0]][edge[1]]['weight']) # /timeslice_thickness)
                 if counter >= len(path) - 2:
                         break
                 counter = counter + 1
-
+            end = datetime.now()
+            print(target_fun, args.number_of_sol_arg-number_of_solutions, " Creating output graph and csv content and writing communities in path to txt: ", end-start)
+            before_postprocessing = output_graph_updated.copy()
 
             # calculate fitness scores for core community
             average_edge_den_core = 0
             average_size_core = 0
             average_shared_core = 0
             average_embed_core = 0
+            
+            start = datetime.now()
             for idx, n in enumerate(path):
                 if idx > 0:
                     author_indices = []
                     authors_current = []
                     for author in list(output_graph_updated):
                         if author in authors_yearly[n[0]]:
-                            if authors_yearly[n[0]].index(author) in id_to_community[n[0]][n[1]]:
+                            if authors_yearly[n[0]].index(author) in id_to_community[n[0] - start_year][n[1]]:
                                 author_indices.append(authors_yearly[n[0]].index(author))
                                 authors_current.append(author)
                     if len(author_indices) > 0:
@@ -382,42 +461,51 @@ def main():
             if len(path) > 3:
                 average_shared_core /= len(path) - 3
             print(args.number_of_sol_arg - number_of_solutions, ", ", len(path) - 2, ", ", average_edge_den_core, ", ", average_size_core, ", ", average_embed_core, ", ", average_shared_core, file = output_csv_core)
-
-
+            end = datetime.now()
+            print(target_fun, args.number_of_sol_arg-number_of_solutions, " Postprocessing (if exists): ", end-start)
             json_out = open(output_path + "outputSingleSourceTarget" + str(testset) +  str(timeslice_thickness) + str(args.number_of_sol_arg) + str(target_fun) + str(community_alg) + str(cutoff) + str(args.number_of_sol_arg - number_of_solutions) + ".json", 'w')
-            colors_out = open(output_path + "outputSingleSourceTargetColors" + str(testset) +  str(timeslice_thickness) + str(args.number_of_sol_arg) + str(target_fun) + str(community_alg) + str(cutoff) + str(args.number_of_sol_arg - number_of_solutions) + ".json", 'w')
+            communities_out = open(output_path + "outputSingleSourceTargetCommunities" + str(testset) +  str(timeslice_thickness) + str(args.number_of_sol_arg) + str(target_fun) + str(community_alg) + str(cutoff) + str(args.number_of_sol_arg - number_of_solutions) + ".json", 'w')
+            postprocessed_out = open(output_path + "outputSingleSourceTargetColors" + str(testset) +  str(timeslice_thickness) + str(args.number_of_sol_arg) + str(target_fun) + str(community_alg) + str(cutoff) + str(args.number_of_sol_arg - number_of_solutions) + ".json", 'w')
             print("Remaining nodes after postprocessing: ", output_graph_updated.nodes(), file=output)
             data = json_graph.adjacency_data(output_graph)
             s = json.dumps(data)
             print(s, file = json_out)
             color_map = list(output_graph_updated)
             c = json.dumps(color_map)
-            print(c, file = colors_out)
+            print(c, file = postprocessed_out)
+            print(json.dumps(list(before_postprocessing)), file = communities_out)
 
 
             #setup for next pass
+            start = datetime.now()
             number_of_solutions -= 1
             if number_of_solutions == 0:
                 break
             counter = 0
             for idx, node in enumerate(path): # check every community on path, remove all communities that contain used authors from comparison graph
                 if counter > 0:
-                    comm = id_to_community[node[0]][node[1]]
-                    for author in id_to_community[node[0]][node[1]]: # author = single author node in community
-                        for check_comm in id_to_community[node[0]]:
-                            if author in check_comm and (node[0], id_to_community[node[0]].index(check_comm)) in comparison_graph:
-                                comparison_graph.remove_node((node[0], id_to_community[node[0]].index(check_comm)))
+                    comm = id_to_community[node[0] - start_year][node[1]]
+                    for author in [*itemgetter(*id_to_community[node[0] - start_year][node[1]])(authors_yearly[node[0]])]: # author = single author node in community
+                        for check_comm in range(len(id_to_community[node[0] - start_year])):
+                            if author in [*itemgetter(*id_to_community[node[0] - start_year][check_comm])(authors_yearly[node[0]])] and (node[0], check_comm) in comparison_graph:
+                                comparison_graph.remove_node((node[0], check_comm))
 
                 if counter >= len(path) - 2:
                     break
                 counter = counter + 1
+            end = datetime.now()
+            print(target_fun, args.number_of_sol_arg-number_of_solutions, " Setting up for next pass (removing used communities from comparison graph): ", end-start)
         if args.target_function < 10 or target_fun == 4: # hier anzahl zielfunktionen
             break
         else:
             target_fun += 1
 
 def compare_communities(first, second):
-    return len(set(first) & set(second))/len(set(first) | set(second))
-
+    global compare_total
+    compare_start = datetime.now()
+    result = len(set(first) & set(second))/len(set(first) | set(second))
+    compare_end = datetime.now()
+    compare_total += compare_end - compare_start
+    return result
 if __name__ == "__main__":
     main()
