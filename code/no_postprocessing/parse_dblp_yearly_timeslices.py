@@ -191,7 +191,7 @@ def main():
                     communities[y - start_year].extend(algorithms.scd(collab_graphs[y].copy(), iterations=3*(i+1), seed=i).communities)
             if community_alg == 3 or community_alg == 10:
                 for i in range(0,10):
-                    communities[y - start_year].extend(algorithms.pycombo(collab_graphs[y].copy(), modularity_resolution=0.25*(i + 1), random_seed=i).communities)            
+                    communities[y - start_year].extend(algorithms.scan(collab_graphs[y].copy(), epsilon=0.1*(i+1), mu=i).communities)            
             
             no_small_communities = []
             for c in communities[y - start_year]:
@@ -315,14 +315,17 @@ def main():
                     for c2_index in range(len(communities[previous_year - start_year])):
                         base_weight = compare_communities([*itemgetter(*id_to_community[y - start_year][c_index])(authors_yearly[y])], [*itemgetter(*id_to_community[previous_year - start_year][c2_index])(authors_yearly[previous_year])])
                         if base_weight > epsilon and target_fun == 0:
-                            base_weight = 1/((log(len(id_to_community[y - start_year][c_index])) + log((len(id_to_community[previous_year - start_year][c2_index]))))/2*20*(base_weight * ((community_calcs[y - start_year][c_index][0] + community_calcs[previous_year - start_year][c2_index][0])/2) * ((community_calcs[y - start_year][c_index][1] + community_calcs[previous_year - start_year][c2_index][1])/2)))
+                            if base_weight < 0.5:
+                                base_weight = 100000
+                            else:
+                                base_weight = 1/((log(len(id_to_community[y - start_year][c_index])) + log((len(id_to_community[previous_year - start_year][c2_index]))))/2*20*(base_weight * ((community_calcs[y - start_year][c_index][0] + community_calcs[previous_year - start_year][c2_index][0])/2) * ((community_calcs[y - start_year][c_index][1] + community_calcs[previous_year - start_year][c2_index][1])/2)))
                         elif base_weight > epsilon and target_fun == 1:
                             base_weight = 1-(base_weight *((community_calcs[y - start_year][c_index][0] + community_calcs[previous_year - start_year][c2_index][0])/2) * ((community_calcs[y - start_year][c_index][1] + community_calcs[previous_year - start_year][c2_index][1])/2))
                         elif base_weight > epsilon and target_fun == 2:
                             if base_weight < 0.5:
                                 base_weight = 100000
                             else:
-                                base_weight = 1/((log(len(id_to_community[y - start_year][c_index])) + log((len(id_to_community[previous_year - start_year][c2_index]))))/2*20*(base_weight * ((community_calcs[y - start_year][c_index][0] + community_calcs[previous_year - start_year][c2_index][0])/2) * ((community_calcs[y - start_year][c_index][1] + community_calcs[previous_year - start_year][c2_index][1])/2)))
+                                base_weight = 1/(((log(len(id_to_community[y - start_year][c_index])) + log((len(id_to_community[previous_year - start_year][c2_index]))))/2)**2*base_weight) 
                         elif base_weight > epsilon and target_fun == 3:
                             if base_weight < 0.5:
                                 base_weight = 100000
@@ -333,6 +336,11 @@ def main():
                                 base_weight = 100000
                             else:
                                 base_weight = (1-base_weight)
+                        elif base_weight > epsilon and target_fun == 5:
+                            if base_weight < 0.5:
+                                base_weight = 100000
+                            else:
+                                base_weight = 1/(((log(len(id_to_community[y - start_year][c_index])) + log((len(id_to_community[previous_year - start_year][c2_index]))))/2)**2*base_weight*2) 
                         else:
                             base_weight = 100000
                         comparison_graph.add_edge((previous_year, c2_index), (y, c_index), weight = base_weight)
@@ -498,7 +506,7 @@ def main():
                 counter = counter + 1
             end = datetime.now()
             print(target_fun, args.number_of_sol_arg-number_of_solutions, " Setting up for next pass (removing used communities from comparison graph): ", end-start)
-        if args.target_function < 10 or target_fun == 4: # hier anzahl zielfunktionen
+        if args.target_function < 10 or target_fun == 5: # hier anzahl zielfunktionen
             break
         else:
             target_fun += 1
