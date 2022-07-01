@@ -462,12 +462,14 @@ def main():
             average_size_core = 0
             average_shared_core = 0
             average_embed_core = 0
-            
+            authors_core_calc = []
+            for author_str in list(output_graph_updated):
+                authors_core_calc.append(author_lst.index(author_str))
             for idx, n in enumerate(path):
                 if idx > 0:
                     author_indices = []
                     authors_current = []
-                    for author in list(output_graph_updated):
+                    for author in authors_core_calc:
                         if author in authors_yearly[n[0]]:
                             if authors_yearly[n[0]].index(author) in id_to_community[n[0] - start_year][n[1]]:
                                 author_indices.append(authors_yearly[n[0]].index(author))
