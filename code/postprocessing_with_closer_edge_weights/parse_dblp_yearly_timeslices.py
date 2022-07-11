@@ -371,6 +371,8 @@ def main():
             average_embed = 0
             average_shared = 0
             counter = 0
+            if not nx.has_path(comparison_graph, "start", "end"):
+                break
             start = datetime.now()
             path = nx.astar_path(comparison_graph, "start", "end")
             end = datetime.now()

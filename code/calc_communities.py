@@ -14,7 +14,7 @@ import argparse
 import sys
 from networkx.readwrite import json_graph
 import json
-
+from scan import SCAN_nx
 from pyparsing import col
 
 # CLEAN UP
@@ -164,9 +164,86 @@ def main():
     # UNBEDINGT BEIDE REPRÄSENTATIONEN ERSTELLEN UND MIT ZAHLEN ALS INDEX VERWENDEN, SONST TOT // vllt auch nicht sonst tot lol
     comm_test_file = open(args.output_path + "comm_test_all.csv", 'a')
 
-    for y in range(1995, 2021 - timeslice_thickness + 1):
-        # else years with no collaborative papers mess up the comparison graph
-        if len(collab_graphs[y]) > 0:
+    # for y in range(1995, 2021 - timeslice_thickness + 1):
+    #     # else years with no collaborative papers mess up the comparison graph
+    #     if len(collab_graphs[y]) > 0:
+    #     # put different communities in
+    #         communities[y] = []
+    #         comm_set = set()
+    #         if community_alg == 0 or community_alg == 10:
+    #             average_runtime = 0
+    #             for i in range(0, 10):
+    #                 start = datetime.now()
+    #                 commies = algorithms.louvain(collab_graphs[y].copy(), weight = 'weight', resolution=0.25*(i + 1), randomize=i).communities
+    #                 end = datetime.now()
+    #                 average_runtime += (end - start).total_seconds()
+    #                 for community in commies:
+    #                     if len(community) >= 3:
+    #                         comm_set.add(tuple(sorted(community)))
+    #                 # comm_set.update(algorithms.louvain(collab_graphs[y].copy(), weight = 'weight', randomize=i).communities)
+    #                 print(y, ", 0,", i, ",", len(comm_set), file = comm_test_file)
+    #                 communities[y].extend(commies)
+    #             print("Average runtime: ", average_runtime/10, file = comm_test_file)
+    #         if community_alg == 1 or community_alg == 10:
+    #             average_runtime = 0
+    #             #comm_set = set()
+    #             #comm_test_file = open("../resources/comm_test_whispers.csv", 'a')
+    #             for i in range(0,10):
+    #                 start = datetime.now()
+    #                 commies = algorithms.chinesewhispers(collab_graphs[y].copy(), iterations=2*(i + 1), seed=i).communities
+    #                 end = datetime.now()
+    #                 average_runtime += (end - start).total_seconds()
+    #                 for community in commies:
+    #                     if len(community) >= 3:
+    #                         comm_set.add(tuple(sorted(community)))
+    #                 print(y, ", 1,", i, ",", len(comm_set), file = comm_test_file)
+    #                 communities[y].extend(commies)
+    #             print("Average runtime: ", average_runtime/10, file = comm_test_file)
+    #         if community_alg == 2 or community_alg == 10:
+    #             average_runtime = 0
+    #             #comm_set = set()
+    #             #comm_test_file = open("../resources/comm_test_scd.csv", 'a')
+    #             for i in range(0,10):
+    #                 start = datetime.now()
+    #                 commies = algorithms.scd(collab_graphs[y].copy(), iterations=3*(i+1), seed=i).communities
+    #                 end = datetime.now()
+    #                 average_runtime += (end - start).total_seconds()
+    #                 for community in commies:
+    #                     if len(community) >= 3:
+    #                         comm_set.add(tuple(sorted(community)))
+    #                 print(y, ", 2,", i , ",", len(comm_set), file = comm_test_file)
+    #                 communities[y].extend(commies)
+    #             print("Average runtime: ", average_runtime/10, file = comm_test_file)
+
+    #         if community_alg == 3 or community_alg == 10:
+    #             average_runtime = 0
+    #             #comm_set = set()
+    #             #comm_test_file = open("../resources/comm_test_pycombo.csv", 'a')
+    #             for i in range(0,10):
+    #                 start = datetime.now()
+    #                 commies = algorithms.edmot(collab_graphs[y].copy(), i+1, 10*(i+1)).communities
+    #                 end = datetime.now()
+    #                 average_runtime += (end - start).total_seconds()
+    #                 for community in commies:
+    #                     if len(community) >= 3:
+    #                         comm_set.add(tuple(sorted(community)))
+    #                 print(y, ", 3,", i, ",", len(comm_set), file = comm_test_file)
+    #                 communities[y].extend(commies)
+    #             print("Average runtime: ", average_runtime/10, file = comm_test_file)
+    #         # if community_alg == 4 or community_alg == 10:
+    #         #     comm_set = set()
+    #         #     comm_test_file = open("../resources/comm_test_gemsec.csv", 'a')
+    #         #     for i in range(0,2):
+    #         #         commies = algorithms.gemsec(collab_graphs[y].copy(), seed=i).communities
+    #         #         for community in commies:
+    #         #             if len(community) >= 3:
+    #         #                 comm_set.add(tuple(sorted(community)))
+    #         #         print(y, ", ", len(comm_set), file = comm_test_file)
+    #         #         communities[y].extend(algorithms.gemsec(collab_graphs[y].copy(), seed=i).communities) #cluster umstellen
+
+    y = 2015
+    #louvain
+    if len(collab_graphs[y]) > 0:
         # put different communities in
             communities[y] = []
             comm_set = set()
@@ -174,7 +251,7 @@ def main():
                 average_runtime = 0
                 for i in range(0, 10):
                     start = datetime.now()
-                    commies = algorithms.louvain(collab_graphs[y].copy(), weight = 'weight', resolution=0.25*(i + 1), randomize=i).communities
+                    commies = algorithms.louvain(collab_graphs[y].copy(), weight = 'weight', resolution=1.0, randomize=0).communities
                     end = datetime.now()
                     average_runtime += (end - start).total_seconds()
                     for community in commies:
@@ -184,62 +261,27 @@ def main():
                     print(y, ", 0,", i, ",", len(comm_set), file = comm_test_file)
                     communities[y].extend(commies)
                 print("Average runtime: ", average_runtime/10, file = comm_test_file)
-            if community_alg == 1 or community_alg == 10:
-                average_runtime = 0
-                #comm_set = set()
-                #comm_test_file = open("../resources/comm_test_whispers.csv", 'a')
-                for i in range(0,10):
-                    start = datetime.now()
-                    commies = algorithms.chinesewhispers(collab_graphs[y].copy(), iterations=2*(i + 1), seed=i).communities
-                    end = datetime.now()
-                    average_runtime += (end - start).total_seconds()
-                    for community in commies:
-                        if len(community) >= 3:
-                            comm_set.add(tuple(sorted(community)))
-                    print(y, ", 1,", i, ",", len(comm_set), file = comm_test_file)
-                    communities[y].extend(commies)
-                print("Average runtime: ", average_runtime/10, file = comm_test_file)
-            if community_alg == 2 or community_alg == 10:
-                average_runtime = 0
-                #comm_set = set()
-                #comm_test_file = open("../resources/comm_test_scd.csv", 'a')
-                for i in range(0,10):
-                    start = datetime.now()
-                    commies = algorithms.scd(collab_graphs[y].copy(), iterations=3*(i+1), seed=i).communities
-                    end = datetime.now()
-                    average_runtime += (end - start).total_seconds()
-                    for community in commies:
-                        if len(community) >= 3:
-                            comm_set.add(tuple(sorted(community)))
-                    print(y, ", 2,", i , ",", len(comm_set), file = comm_test_file)
-                    communities[y].extend(commies)
-                print("Average runtime: ", average_runtime/10, file = comm_test_file)
 
-            if community_alg == 3 or community_alg == 10:
+    comm_set = set()
+    if len(collab_graphs[y]) > 0:
+        # put different communities in
+            communities[y] = []
+            comm_set = set()
+            if community_alg == 0 or community_alg == 10:
                 average_runtime = 0
-                #comm_set = set()
-                #comm_test_file = open("../resources/comm_test_pycombo.csv", 'a')
-                for i in range(0,10):
+                for i in range(0, 10):
                     start = datetime.now()
-                    commies = algorithms.edmot(collab_graphs[y].copy(), i+1, 10*(i+1)).communities
+                    scan_init = SCAN_nx(collab_graphs[y].copy(), 0.5, 3, 42)
+                    commies = scan_init.execute()
                     end = datetime.now()
                     average_runtime += (end - start).total_seconds()
                     for community in commies:
                         if len(community) >= 3:
                             comm_set.add(tuple(sorted(community)))
+                    # comm_set.update(algorithms.louvain(collab_graphs[y].copy(), weight = 'weight', randomize=i).communities)
                     print(y, ", 3,", i, ",", len(comm_set), file = comm_test_file)
                     communities[y].extend(commies)
                 print("Average runtime: ", average_runtime/10, file = comm_test_file)
-            # if community_alg == 4 or community_alg == 10:
-            #     comm_set = set()
-            #     comm_test_file = open("../resources/comm_test_gemsec.csv", 'a')
-            #     for i in range(0,2):
-            #         commies = algorithms.gemsec(collab_graphs[y].copy(), seed=i).communities
-            #         for community in commies:
-            #             if len(community) >= 3:
-            #                 comm_set.add(tuple(sorted(community)))
-            #         print(y, ", ", len(comm_set), file = comm_test_file)
-            #         communities[y].extend(algorithms.gemsec(collab_graphs[y].copy(), seed=i).communities) #cluster umstellen
-
+    print("Test", file=comm_test_file)
 if __name__ == "__main__":
     main()
