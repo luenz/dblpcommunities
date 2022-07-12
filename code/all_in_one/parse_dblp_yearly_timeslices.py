@@ -591,6 +591,74 @@ def main():
                     c = json.dumps(color_map)
                     print(c, file = postprocessed_out)
 
+                if postprocessing_type_updated == 2:
+
+                    start = datetime.now()
+                    # initially remove authors which are not present sufficiently often (factor subject to change) !!! might split community !!!
+                    remove_nodes = []
+                    average_degree = 0
+                    for node in output_graph_updated:
+                        average_degree += output_graph_updated.degree(node)
+                    average_degree /= output_graph_updated.number_of_nodes()
+                    for node in output_graph_updated:
+                        if output_graph_updated.degree(node) < average_degree*0.75:
+                            remove_nodes.append(node)
+                    output_graph_updated.remove_nodes_from(remove_nodes)
+
+                    # remove authors that are not sufficiently connected to the core community
+                    while True:
+                        remove_nodes = []
+                        for node in output_graph_updated:
+                            if output_graph_updated.degree(node) < 2:
+                                remove_nodes.append(node)
+                        output_graph_updated.remove_nodes_from(remove_nodes)
+                        if len(remove_nodes) < 1:
+                            break
+                    end = datetime.now()
+
+                    # calculate fitness scores for core community
+                    average_edge_den_core = 0
+                    average_size_core = 0
+                    average_shared_core = 0
+                    average_embed_core = 0
+                    
+                    authors_core_calc = []
+                    for author_str in list(output_graph_updated):
+                        authors_core_calc.append(author_lst.index(author_str))
+                    for idx, n in enumerate(path):
+                        if idx > 0:
+                            author_indices = []
+                            authors_current = []
+                            for author in authors_core_calc:
+                                if author in authors_yearly[n[0]]:
+                                    if authors_yearly[n[0]].index(author) in id_to_community[n[0] - start_year][n[1]]:
+                                        author_indices.append(authors_yearly[n[0]].index(author))
+                                        authors_current.append(author)
+                            if len(author_indices) > 0:
+                                core_comm_clustering = NodeClustering([author_indices], collab_graphs[n[0]], "core_community")
+                                average_edge_den_core += evaluation.internal_edge_density(core_comm_clustering.graph, core_comm_clustering, summary=False)[0]
+                                average_size_core += len(author_indices)
+                                average_embed_core += evaluation.avg_embeddedness(core_comm_clustering.graph, core_comm_clustering, summary=False)[0]
+                                if idx > 1:
+                                    average_shared_core += compare_communities(authors_current, authors_previous)
+                            authors_previous = authors_current.copy()
+                        if idx >= len(path) - 2:
+                            break
+                    average_edge_den_core /= len(path) - 2
+                    average_size_core /= len(path) - 2
+                    average_embed_core /= len(path) - 2
+                    if len(path) > 3:
+                        average_shared_core /= len(path) - 3
+                    output_csv_core = open(output_path + "outputSingleSourceTargetAVDWeaker" + str(testset) +  str(timeslice_thickness) + str(args.number_of_sol_arg) + str(target_fun) + str(community_alg) + str(cutoff) + ".csv", 'a')
+                    print(args.number_of_sol_arg - number_of_solutions, ", ", len(path) - 2, ", ", average_edge_den_core, ", ", average_size_core, ", ", average_embed_core, ", ", average_shared_core, file = output_csv_core)
+                    print(target_fun, args.number_of_sol_arg-number_of_solutions, " Postprocessing (if exists): ", end-start)
+                    postprocessed_out = open(output_path + "outputSingleSourceTargetAVDWeaker" + str(testset) +  str(timeslice_thickness) + str(args.number_of_sol_arg) + str(target_fun) + str(community_alg) + str(cutoff) + str(args.number_of_sol_arg - number_of_solutions) + ".json", 'w')
+                    print("Remaining nodes after postprocessing: ", output_graph_updated.nodes(), file=output)
+                    color_map = list(output_graph_updated)
+                    c = json.dumps(color_map)
+                    print(c, file = postprocessed_out)
+
+            
                 if args.postprocessing_type < 10:
                     break
                 postprocessing_type_updated += 1
