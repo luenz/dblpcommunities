@@ -31,9 +31,9 @@ def main():
     parser.add_argument('postprocessing_type', type=int) # 0 for standard, 1 for avg_degree
     parser.add_argument('xml_path', type=str)
     parser.add_argument('output_path', type=str)
-
+    parser.add_argument('-c', '--core_remove', action='store_true') # do not use with multiple postprocessing types
     args = parser.parse_args()
-    postprocessing_type_max = 2
+    postprocessing_type_max = 4
     if len(sys.argv) > 1:
         testset = args.testset_arg
         timeslice_thickness = args.thickness_arg
@@ -204,8 +204,8 @@ def main():
                     communities[y - start_year].extend(algorithms.scd(collab_graphs[y].copy(), iterations=3*(i+1), seed=i).communities)
             if community_alg == 3 or community_alg == 10:
                 for i in range(0,10):
-                    scan_init = SCAN_nx(collab_graphs[y].copy(), epsilon = 0.5+(i+1)*0.5, mu = 10 - i, seed = 42)
-                    communities[y - start_year].extend(scan_init.execute())            
+                    scan_init = SCAN_nx(collab_graphs[y].copy(), epsilon = 0.25+(i*0.5), mu = 3, seed = i)
+                    communities[y - start_year].extend(scan_init.execute())
             
             no_small_communities = []
             for c in communities[y - start_year]:
@@ -376,11 +376,19 @@ def main():
             # find shortest path in comparison graph to find most similar communities in different years
             postprocessing_type_updated = postprocessing_type
 
+            sizes = []
+            shareds = []
+            edge_dens = []
+            embeds = []
             average_size = 0
+            size_sd = 0
             average_edge_den = 0
+            edge_den_sd = 0
             average_embed = 0
-            average_shared = 0
+            embed_sd = 0
             counter = 0
+
+
             if not nx.has_path(comparison_graph, "start", "end"):
                 break
             start = datetime.now()
@@ -394,10 +402,10 @@ def main():
                 if counter > 0:
                     print([*itemgetter(*itemgetter(*id_to_community[n[0] - start_year][n[1]])(authors_yearly[n[0]]))(author_lst)], file = output)
                     calc_clustering = NodeClustering([id_to_community[n[0] - start_year][n[1]]], graph=collab_graphs[n[0]], method_name="egal")
-                    average_size += len(calc_clustering.communities[0])
+                    sizes.append(len(calc_clustering.communities[0]))
                     edge_den_old = average_edge_den
-                    average_edge_den += evaluation.internal_edge_density(calc_clustering.graph, calc_clustering, summary=False)[0]
-                    average_embed += evaluation.avg_embeddedness(calc_clustering.graph, calc_clustering, summary=False)[0]
+                    edge_dens.append(evaluation.internal_edge_density(calc_clustering.graph, calc_clustering, summary=False)[0])
+                    embeds.append(evaluation.avg_embeddedness(calc_clustering.graph, calc_clustering, summary=False)[0])
                     for author in id_to_community[n[0] - start_year][n[1]]:
                             conferences_in_comm = conferences_in_comm.union(author_conferences[author_lst[authors_yearly[n[0]][author]]])
                     print(conferences_in_comm, file = output)
@@ -405,17 +413,21 @@ def main():
                         break
                     else:
                         next_item = path[idx + 1]
-                        average_shared += compare_communities([*itemgetter(*id_to_community[n[0] - start_year][n[1]])(authors_yearly[n[0]])], [*itemgetter(*id_to_community[next_item[0] - start_year][next_item[1]])(authors_yearly[next_item[0]])])
+                        shareds.append(compare_communities([*itemgetter(*id_to_community[n[0] - start_year][n[1]])(authors_yearly[n[0]])], [*itemgetter(*id_to_community[next_item[0] - start_year][next_item[1]])(authors_yearly[next_item[0]])]))
                         print(comparison_graph.get_edge_data(n, path[idx + 1]), file = output)
                 counter = counter + 1
                 if counter == len(path) - 1:
                     break
-            average_size = average_size/(len(path) - 2)
-            average_edge_den = average_edge_den/(len(path) - 2)
-            average_embed = average_embed/(len(path) - 2)
+            average_size = np.mean(sizes)
+            size_sd = np.std(sizes)
+            average_edge_den = np.mean(edge_dens)
+            edge_den_sd = np.std(edge_dens)
+            average_embed = np.mean(embeds)
+            embed_sd = np.std(embeds)
             if len(path) > 3:
-                average_shared /= (len(path) - 3) # only count year transitions
-            print(args.number_of_sol_arg - number_of_solutions, ", ", len(path) - 2, ", ", average_edge_den, ", ", average_size, ", ", average_embed, ", ", average_shared, file = output_csv)
+                average_shared = np.mean(shareds) # only count year transitions
+                shared_sd = np.std(shareds)
+            print(args.number_of_sol_arg - number_of_solutions, ", ", len(path) - 2, ", ", average_size, ", ", size_sd, ", ", average_shared, ", ", shared_sd, ", ", average_edge_den, ", ", edge_den_sd, ", ", average_embed, ", ", embed_sd, file = output_csv)
             # create output graph
             output_graph = nx.Graph()
             color_map = []
@@ -483,10 +495,18 @@ def main():
 
 
                     # calculate fitness scores for core community
+                    sizes_core = []
+                    edge_dens_core = []
+                    shareds_core = []
+                    embeds_core = []
                     average_edge_den_core = 0
+                    edge_den_sd_core = 0
                     average_size_core = 0
+                    size_sd_core = 0
                     average_shared_core = 0
+                    shared_sd_core = 0
                     average_embed_core = 0
+                    embed_sd_core = 0
                     
                     authors_core_calc = []
                     for author_str in list(output_graph_updated):
@@ -502,21 +522,25 @@ def main():
                                         authors_current.append(author)
                             if len(author_indices) > 0:
                                 core_comm_clustering = NodeClustering([author_indices], collab_graphs[n[0]], "core_community")
-                                average_edge_den_core += evaluation.internal_edge_density(core_comm_clustering.graph, core_comm_clustering, summary=False)[0]
-                                average_size_core += len(author_indices)
-                                average_embed_core += evaluation.avg_embeddedness(core_comm_clustering.graph, core_comm_clustering, summary=False)[0]
+                                edge_dens_core.append(evaluation.internal_edge_density(core_comm_clustering.graph, core_comm_clustering, summary=False)[0])
+                                sizes_core.append(len(author_indices))
+                                embeds_core.append(evaluation.avg_embeddedness(core_comm_clustering.graph, core_comm_clustering, summary=False)[0])
                                 if idx > 1:
-                                    average_shared_core += compare_communities(authors_current, authors_previous)
+                                    shareds_core.append(compare_communities(authors_current, authors_previous))
                             authors_previous = authors_current.copy()
                         if idx >= len(path) - 2:
                             break
-                    average_edge_den_core /= len(path) - 2
-                    average_size_core /= len(path) - 2
-                    average_embed_core /= len(path) - 2
+                    average_edge_den_core = np.mean(edge_dens_core)
+                    edge_den_sd_core = np.std(edge_dens_core)
+                    average_size_core = np.mean(sizes_core)
+                    size_sd_core = np.std(sizes_core)
+                    average_embed_core = np.mean(embeds_core)
+                    embed_sd_core = np.std(embeds_core)
                     if len(path) > 3:
-                        average_shared_core /= len(path) - 3
+                        average_shared_core = np.mean(shareds_core)
+                        shared_sd_core = np.std(shareds_core)
                     output_csv_core = open(output_path + "outputSingleSourceTargetSTD" + str(testset) +  str(timeslice_thickness) + str(args.number_of_sol_arg) + str(target_fun) + str(community_alg) + str(cutoff) + ".csv", 'a')
-                    print(args.number_of_sol_arg - number_of_solutions, ", ", len(path) - 2, ", ", average_edge_den_core, ", ", average_size_core, ", ", average_embed_core, ", ", average_shared_core, file = output_csv_core)
+                    print(args.number_of_sol_arg - number_of_solutions, ", ", len(path) - 2, ", ", average_size_core, ", ", size_sd_core, ", ", average_shared_core, ", ", shared_sd_core, ", ", average_edge_den_core, ", ", edge_den_sd_core, ", ", average_embed_core, ", ", embed_sd_core, file = output_csv_core)
                     print(target_fun, args.number_of_sol_arg-number_of_solutions, " Postprocessing (if exists): ", end-start)
                     postprocessed_out = open(output_path + "outputSingleSourceTargetSTD" + str(testset) +  str(timeslice_thickness) + str(args.number_of_sol_arg) + str(target_fun) + str(community_alg) + str(cutoff) + str(args.number_of_sol_arg - number_of_solutions) + ".json", 'w')
                     print("Remaining nodes after postprocessing: ", output_graph_updated.nodes(), file=output)
@@ -550,10 +574,18 @@ def main():
                     end = datetime.now()
 
                     # calculate fitness scores for core community
+                    sizes_core = []
+                    edge_dens_core = []
+                    shareds_core = []
+                    embeds_core = []
                     average_edge_den_core = 0
+                    edge_den_sd_core = 0
                     average_size_core = 0
+                    size_sd_core = 0
                     average_shared_core = 0
+                    shared_sd_core = 0
                     average_embed_core = 0
+                    embed_sd_core = 0
                     
                     authors_core_calc = []
                     for author_str in list(output_graph_updated):
@@ -569,21 +601,25 @@ def main():
                                         authors_current.append(author)
                             if len(author_indices) > 0:
                                 core_comm_clustering = NodeClustering([author_indices], collab_graphs[n[0]], "core_community")
-                                average_edge_den_core += evaluation.internal_edge_density(core_comm_clustering.graph, core_comm_clustering, summary=False)[0]
-                                average_size_core += len(author_indices)
-                                average_embed_core += evaluation.avg_embeddedness(core_comm_clustering.graph, core_comm_clustering, summary=False)[0]
+                                edge_dens_core.append(evaluation.internal_edge_density(core_comm_clustering.graph, core_comm_clustering, summary=False)[0])
+                                sizes_core.append(len(author_indices))
+                                embeds_core.append(evaluation.avg_embeddedness(core_comm_clustering.graph, core_comm_clustering, summary=False)[0])
                                 if idx > 1:
-                                    average_shared_core += compare_communities(authors_current, authors_previous)
+                                    shareds_core.append(compare_communities(authors_current, authors_previous))
                             authors_previous = authors_current.copy()
                         if idx >= len(path) - 2:
                             break
-                    average_edge_den_core /= len(path) - 2
-                    average_size_core /= len(path) - 2
-                    average_embed_core /= len(path) - 2
+                    average_edge_den_core = np.mean(edge_dens_core)
+                    edge_den_sd_core = np.std(edge_dens_core)
+                    average_size_core = np.mean(sizes_core)
+                    size_sd_core = np.std(sizes_core)
+                    average_embed_core = np.mean(embeds_core)
+                    embed_sd_core = np.std(embeds_core)
                     if len(path) > 3:
-                        average_shared_core /= len(path) - 3
+                        average_shared_core = np.mean(shareds_core)
+                        shared_sd_core = np.std(shareds_core)
                     output_csv_core = open(output_path + "outputSingleSourceTargetAVD" + str(testset) +  str(timeslice_thickness) + str(args.number_of_sol_arg) + str(target_fun) + str(community_alg) + str(cutoff) + ".csv", 'a')
-                    print(args.number_of_sol_arg - number_of_solutions, ", ", len(path) - 2, ", ", average_edge_den_core, ", ", average_size_core, ", ", average_embed_core, ", ", average_shared_core, file = output_csv_core)
+                    print(args.number_of_sol_arg - number_of_solutions, ", ", len(path) - 2, ", ", average_size_core, ", ", size_sd_core, ", ", average_shared_core, ", ", shared_sd_core, ", ", average_edge_den_core, ", ", edge_den_sd_core, ", ", average_embed_core, ", ", embed_sd_core, file = output_csv_core)
                     print(target_fun, args.number_of_sol_arg-number_of_solutions, " Postprocessing (if exists): ", end-start)
                     postprocessed_out = open(output_path + "outputSingleSourceTargetAVD" + str(testset) +  str(timeslice_thickness) + str(args.number_of_sol_arg) + str(target_fun) + str(community_alg) + str(cutoff) + str(args.number_of_sol_arg - number_of_solutions) + ".json", 'w')
                     print("Remaining nodes after postprocessing: ", output_graph_updated.nodes(), file=output)
@@ -617,10 +653,18 @@ def main():
                     end = datetime.now()
 
                     # calculate fitness scores for core community
+                    sizes_core = []
+                    edge_dens_core = []
+                    shareds_core = []
+                    embeds_core = []
                     average_edge_den_core = 0
+                    edge_den_sd_core = 0
                     average_size_core = 0
+                    size_sd_core = 0
                     average_shared_core = 0
+                    shared_sd_core = 0
                     average_embed_core = 0
+                    embed_sd_core = 0
                     
                     authors_core_calc = []
                     for author_str in list(output_graph_updated):
@@ -636,21 +680,25 @@ def main():
                                         authors_current.append(author)
                             if len(author_indices) > 0:
                                 core_comm_clustering = NodeClustering([author_indices], collab_graphs[n[0]], "core_community")
-                                average_edge_den_core += evaluation.internal_edge_density(core_comm_clustering.graph, core_comm_clustering, summary=False)[0]
-                                average_size_core += len(author_indices)
-                                average_embed_core += evaluation.avg_embeddedness(core_comm_clustering.graph, core_comm_clustering, summary=False)[0]
+                                edge_dens_core.append(evaluation.internal_edge_density(core_comm_clustering.graph, core_comm_clustering, summary=False)[0])
+                                sizes_core.append(len(author_indices))
+                                embeds_core.append(evaluation.avg_embeddedness(core_comm_clustering.graph, core_comm_clustering, summary=False)[0])
                                 if idx > 1:
-                                    average_shared_core += compare_communities(authors_current, authors_previous)
+                                    shareds_core.append(compare_communities(authors_current, authors_previous))
                             authors_previous = authors_current.copy()
                         if idx >= len(path) - 2:
                             break
-                    average_edge_den_core /= len(path) - 2
-                    average_size_core /= len(path) - 2
-                    average_embed_core /= len(path) - 2
+                    average_edge_den_core = np.mean(edge_dens_core)
+                    edge_den_sd_core = np.std(edge_dens_core)
+                    average_size_core = np.mean(sizes_core)
+                    size_sd_core = np.std(sizes_core)
+                    average_embed_core = np.mean(embeds_core)
+                    embed_sd_core = np.std(embeds_core)
                     if len(path) > 3:
-                        average_shared_core /= len(path) - 3
+                        average_shared_core = np.mean(shareds_core)
+                        shared_sd_core = np.std(shareds_core)
                     output_csv_core = open(output_path + "outputSingleSourceTargetAVDWeaker" + str(testset) +  str(timeslice_thickness) + str(args.number_of_sol_arg) + str(target_fun) + str(community_alg) + str(cutoff) + ".csv", 'a')
-                    print(args.number_of_sol_arg - number_of_solutions, ", ", len(path) - 2, ", ", average_edge_den_core, ", ", average_size_core, ", ", average_embed_core, ", ", average_shared_core, file = output_csv_core)
+                    print(args.number_of_sol_arg - number_of_solutions, ", ", len(path) - 2, ", ", average_size_core, ", ", size_sd_core, ", ", average_shared_core, ", ", shared_sd_core, ", ", average_edge_den_core, ", ", edge_den_sd_core, ", ", average_embed_core, ", ", embed_sd_core, file = output_csv_core)
                     print(target_fun, args.number_of_sol_arg-number_of_solutions, " Postprocessing (if exists): ", end-start)
                     postprocessed_out = open(output_path + "outputSingleSourceTargetAVDWeaker" + str(testset) +  str(timeslice_thickness) + str(args.number_of_sol_arg) + str(target_fun) + str(community_alg) + str(cutoff) + str(args.number_of_sol_arg - number_of_solutions) + ".json", 'w')
                     print("Remaining nodes after postprocessing: ", output_graph_updated.nodes(), file=output)
@@ -658,6 +706,84 @@ def main():
                     c = json.dumps(color_map)
                     print(c, file = postprocessed_out)
 
+                if postprocessing_type_updated == 3:
+
+                    start = datetime.now()
+                    # initially remove authors which are not present sufficiently often (factor subject to change) !!! might split community !!!
+                    remove_nodes = []
+                    for node in output_graph_updated:
+                        occurences = 0
+                        for idx, n in enumerate(path):
+                            if idx > 0 and idx < len(path) - 1:
+                                if node in [*itemgetter(*itemgetter(*id_to_community[n[0] - start_year][n[1]])(authors_yearly[n[0]]))(author_lst)]:
+                                    occurences += 1
+                        if occurences <= timeslice_thickness:
+                            remove_nodes.append(node)
+                    output_graph_updated.remove_nodes_from(remove_nodes)
+                    # remove authors that are not sufficiently connected to the core community
+                    while True:
+                        remove_nodes = []
+                        for node in output_graph_updated:
+                            if output_graph_updated.degree(node) < 2:
+                                remove_nodes.append(node)
+                        output_graph_updated.remove_nodes_from(remove_nodes)
+                        if len(remove_nodes) < 1:
+                            break
+                    end = datetime.now()
+
+                    # calculate fitness scores for core community
+                    sizes_core = []
+                    edge_dens_core = []
+                    shareds_core = []
+                    embeds_core = []
+                    average_edge_den_core = 0
+                    edge_den_sd_core = 0
+                    average_size_core = 0
+                    size_sd_core = 0
+                    average_shared_core = 0
+                    shared_sd_core = 0
+                    average_embed_core = 0
+                    embed_sd_core = 0
+                    
+                    authors_core_calc = []
+                    for author_str in list(output_graph_updated):
+                        authors_core_calc.append(author_lst.index(author_str))
+                    for idx, n in enumerate(path):
+                        if idx > 0:
+                            author_indices = []
+                            authors_current = []
+                            for author in authors_core_calc:
+                                if author in authors_yearly[n[0]]:
+                                    if authors_yearly[n[0]].index(author) in id_to_community[n[0] - start_year][n[1]]:
+                                        author_indices.append(authors_yearly[n[0]].index(author))
+                                        authors_current.append(author)
+                            if len(author_indices) > 0:
+                                core_comm_clustering = NodeClustering([author_indices], collab_graphs[n[0]], "core_community")
+                                edge_dens_core.append(evaluation.internal_edge_density(core_comm_clustering.graph, core_comm_clustering, summary=False)[0])
+                                sizes_core.append(len(author_indices))
+                                embeds_core.append(evaluation.avg_embeddedness(core_comm_clustering.graph, core_comm_clustering, summary=False)[0])
+                                if idx > 1:
+                                    shareds_core.append(compare_communities(authors_current, authors_previous))
+                            authors_previous = authors_current.copy()
+                        if idx >= len(path) - 2:
+                            break
+                    average_edge_den_core = np.mean(edge_dens_core)
+                    edge_den_sd_core = np.std(edge_dens_core)
+                    average_size_core = np.mean(sizes_core)
+                    size_sd_core = np.std(sizes_core)
+                    average_embed_core = np.mean(embeds_core)
+                    embed_sd_core = np.std(embeds_core)
+                    if len(path) > 3:
+                        average_shared_core = np.mean(shareds_core)
+                        shared_sd_core = np.std(shareds_core)
+                    output_csv_core = open(output_path + "outputSingleSourceTargetLight" + str(testset) +  str(timeslice_thickness) + str(args.number_of_sol_arg) + str(target_fun) + str(community_alg) + str(cutoff) + ".csv", 'a')
+                    print(args.number_of_sol_arg - number_of_solutions, ", ", len(path) - 2, ", ", average_size_core, ", ", size_sd_core, ", ", average_shared_core, ", ", shared_sd_core, ", ", average_edge_den_core, ", ", edge_den_sd_core, ", ", average_embed_core, ", ", embed_sd_core, file = output_csv_core)
+                    print(target_fun, args.number_of_sol_arg-number_of_solutions, " Postprocessing (if exists): ", end-start)
+                    postprocessed_out = open(output_path + "outputSingleSourceTargetLight" + str(testset) +  str(timeslice_thickness) + str(args.number_of_sol_arg) + str(target_fun) + str(community_alg) + str(cutoff) + str(args.number_of_sol_arg - number_of_solutions) + ".json", 'w')
+                    print("Remaining nodes after postprocessing: ", output_graph_updated.nodes(), file=output)
+                    color_map = list(output_graph_updated)
+                    c = json.dumps(color_map)
+                    print(c, file = postprocessed_out)
             
                 if args.postprocessing_type < 10:
                     break
@@ -676,17 +802,32 @@ def main():
             if number_of_solutions == 0:
                 break
             counter = 0
-            for idx, node in enumerate(path): # check every community on path, remove all communities that contain used authors from comparison graph
-                if counter > 0:
-                    comm = id_to_community[node[0] - start_year][node[1]]
-                    for author in [*itemgetter(*id_to_community[node[0] - start_year][node[1]])(authors_yearly[node[0]])]: # author = single author node in community
-                        for check_comm in range(len(id_to_community[node[0] - start_year])):
-                            if author in [*itemgetter(*id_to_community[node[0] - start_year][check_comm])(authors_yearly[node[0]])] and (node[0], check_comm) in comparison_graph:
-                                comparison_graph.remove_node((node[0], check_comm))
-
-                if counter >= len(path) - 2:
-                    break
-                counter = counter + 1
+            removed = 0
+            if args.core_remove:
+                for idx, node in enumerate(path): # check every community on path, remove all communities that contain used authors from comparison graph
+                    if counter > 0:
+                        comm = id_to_community[node[0] - start_year][node[1]]
+                        for author in [*itemgetter(*id_to_community[node[0] - start_year][node[1]])(authors_yearly[node[0]])]: # author = single author node in community
+                            for check_comm in range(len(id_to_community[node[0] - start_year])):
+                                if author in [*itemgetter(*id_to_community[node[0] - start_year][check_comm])(authors_yearly[node[0]])] and (node[0], check_comm) in comparison_graph:
+                                    if author_lst[author] in list(output_graph_updated.nodes):
+                                        comparison_graph.remove_node((node[0], check_comm))
+                                        removed += 1
+                    if counter >= len(path) - 2:
+                        break
+                    counter = counter + 1
+            else:
+                for idx, node in enumerate(path): # check every community on path, remove all communities that contain used authors from comparison graph
+                    if counter > 0:
+                        comm = id_to_community[node[0] - start_year][node[1]]
+                        for author in [*itemgetter(*id_to_community[node[0] - start_year][node[1]])(authors_yearly[node[0]])]: # author = single author node in community
+                            for check_comm in range(len(id_to_community[node[0] - start_year])):
+                                if author in [*itemgetter(*id_to_community[node[0] - start_year][check_comm])(authors_yearly[node[0]])] and (node[0], check_comm) in comparison_graph:
+                                    comparison_graph.remove_node((node[0], check_comm))
+                                    removed += 1
+                    if counter >= len(path) - 2:
+                        break
+                    counter = counter + 1
             end = datetime.now()
             print(target_fun, args.number_of_sol_arg-number_of_solutions, " Setting up for next pass (removing used communities from comparison graph): ", end-start)
         if args.target_function < 10 or target_fun == 5: # hier anzahl zielfunktionen
