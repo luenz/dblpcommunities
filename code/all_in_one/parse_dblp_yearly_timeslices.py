@@ -803,7 +803,8 @@ def main():
                 break
             counter = 0
             removed = 0
-            if args.core_remove:
+            if args.core_remove and len(list(output_graph_updated.nodes)) > timeslice_thickness:
+                print("removed core, in core: ", len(list(output_graph_updated.nodes)))
                 for idx, node in enumerate(path): # check every community on path, remove all communities that contain used authors from comparison graph
                     if counter > 0:
                         comm = id_to_community[node[0] - start_year][node[1]]
@@ -817,6 +818,7 @@ def main():
                         break
                     counter = counter + 1
             else:
+                print("removed extended, in core: ", len(list(output_graph_updated.nodes)))
                 for idx, node in enumerate(path): # check every community on path, remove all communities that contain used authors from comparison graph
                     if counter > 0:
                         comm = id_to_community[node[0] - start_year][node[1]]
