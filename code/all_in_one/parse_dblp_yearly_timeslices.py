@@ -13,6 +13,8 @@ from math import log
 import json
 from operator import itemgetter
 from scan import SCAN_nx
+import community_louvain
+from collections import defaultdict
 
 from pyparsing import col
 
@@ -195,7 +197,13 @@ def main():
             communities.append([])
             if community_alg == 0 or community_alg == 10:
                 for i in range(0, 10):
-                    communities[y - start_year].extend(algorithms.louvain(collab_graphs[y].copy(), weight = 'weight', resolution=0.25*(i + 1), randomize=i).communities)
+                    #communities[y - start_year].extend(algorithms.louvain(collab_graphs[y].copy(), weight = 'weight', resolution=0.25*(i + 1), randomize=i).communities)
+                    comms_louvain = community_louvain.best_partition(collab_graphs[y].copy(), weight = 'weight', resolution=0.25*(i + 1), random_state=i)
+                        # Reshaping the results
+                    coms_to_node = defaultdict(list)
+                    for n, c in comms_louvain.items():
+                        coms_to_node[c].append(n)
+                    communities[y - start_year].extend([list(c) for c in coms_to_node.values()])
             if community_alg == 1 or community_alg == 10:
                 for i in range(0,10):
                     communities[y - start_year].extend(algorithms.chinesewhispers(collab_graphs[y].copy(), iterations=2*(i + 1), seed=i).communities)
