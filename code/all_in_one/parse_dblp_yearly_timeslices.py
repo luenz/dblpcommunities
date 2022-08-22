@@ -212,7 +212,7 @@ def main():
                     communities[y - start_year].extend(algorithms.scd(collab_graphs[y].copy(), iterations=3*(i+1), seed=i).communities)
             if community_alg == 3 or community_alg == 10:
                 for i in range(0,10):
-                    scan_init = SCAN_nx(collab_graphs[y].copy(), epsilon = 0.25+(i*0.5), mu = 3, seed = i)
+                    scan_init = SCAN_nx(collab_graphs[y].copy(), epsilon = 0.5+(i*0.05), mu = 2+(i*0.2), seed = i)
                     communities[y - start_year].extend(scan_init.execute())
             
             no_small_communities = []
