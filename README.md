@@ -4,4 +4,4 @@ To use the program, CDlib v2.6.0 is required (as well as some of its dependencie
 Furthermore, dblp.xml and dblp.dtd are required, with dblp.dtd needing to be present in the directory the main functions are called from (parse_dblp_yearly_timeslices.py and show_single_timeslice.py).
 
 community_louvain.py, community_status.py and scan.py were taken from CDlib v2.6.0 and edited slightly to make them more usable for this project. 
-community_louvain.py is released under BSD license by THomas Aynaud.
+community_louvain.py is released under BSD license by Thomas Aynaud.
